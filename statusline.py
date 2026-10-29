@@ -3,7 +3,7 @@
 
   dashboard  context, 5-hour and 7-day bars in one column; on the right a panel and Clawd, the mascot
   chips      the same bars, with the model and the effort drawn as chips above them
-  campfire   a night sky across the whole line where Clawd camps, and every part of the scene is live data
+  campfire   the numbers in night colours, and beside them a night scene where Clawd camps: all of it live data
 
 Try them:
   python statusline.py --demo [STYLE]   animated preview with fake data
@@ -62,12 +62,12 @@ def breathe(tick, period): return (1 - math.cos(2 * math.pi * (tick % period) / 
 def cut(text, n): return text if len(text) <= n else text[:n - 1] + "…"
 
 
-def ramp(p):
+def ramp(p, stops=RAMP):
     p = clamp(p)
-    for (p0, c0), (p1, c1) in zip(RAMP, RAMP[1:]):
+    for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
         if p <= p1:
             return mix(c0, c1, (p - p0) / (p1 - p0))
-    return RAMP[-1][1]
+    return stops[-1][1]
 
 
 def rnd(*key):
@@ -262,12 +262,12 @@ def load_hist(s, now):
 
 # ---------------------------------------------------------------- shared pieces
 
-def pct(v, tick, width=4):
+def pct(v, tick, width=4, stops=RAMP):
     """Percentage in its heat colour. Critical values pulse; the width never changes so nothing jitters."""
     text = " " + f"{v:.0f}%".rjust(width)
     if v >= 90 and tick % 2:
-        return BOLD + paint(mix(ramp(v), WHITE, 0.4), text)
-    return paint(ramp(v), text)
+        return BOLD + paint(mix(ramp(v, stops), WHITE, 0.4), text)
+    return paint(ramp(v, stops), text)
 
 
 def gauge(p, width, tick, phase=0):
@@ -505,7 +505,8 @@ def v_dash(s, tick):
 
 # ---------------------------------------------------------------- campfire
 
-# Clawd camps under a night sky that spans the whole line, and every part of the scene is live data:
+# The numbers sit on the left, on the terminal's own background, in the colours of the night. On the
+# right is a window onto the night where Clawd camps, and every part of the scene is live data:
 #   stars     fill the sky as the context fills, and clear when it compacts
 #   moon      the 7-day budget: full after the reset, it wanes as you spend it
 #   woodpile  the 5-hour budget, a log for every 20% left
@@ -513,20 +514,23 @@ def v_dash(s, tick):
 #   weather   clear while all is well, clouds when something needs watching, a storm when it is critical
 #   sky       follows your clock, so dusk and dawn colour the horizon
 # Once a limit is hit the fire goes out and Clawd sleeps in the tent until the reset.
-# The scene is pixels, 2 across and 3 down per cell, drawn with the sextant glyphs U+1FB00-1FB3B
-# that VS Code, WezTerm and Kitty draw themselves. A terminal that takes them from a font without
-# them shows boxes: set CLAWD_BASIC=1 for half blocks and square bar ends instead.
+# The scene is pixels, 2 across and 2 down per cell. A cell shows two of its colours, top over bottom
+# (▀) or left beside right (▌): the only block glyphs every monospace font has, so the scene looks the
+# same whether or not the terminal draws block glyphs itself. Small things (stars, sparks, snow, rain)
+# are text glyphs on top, which the font draws finer than a pixel.
 
-BASIC = bool(os.environ.get("CLAWD_BASIC"))
 CREAM = (242, 236, 218)
-LAV = (162, 156, 208)        # labels and quiet text
+LAV = (162, 156, 208)        # labels
+DIM = (112, 108, 156)        # quiet words: separators, "resets", the session's name
 GLASS = (44, 42, 84)         # the empty part of a bar
-PAST = (64, 62, 112)         # a window's bar where time has passed with budget to spare
-NIGHT_INK = (16, 14, 34)
+VIOLET = (178, 158, 246)     # effort
+TEAL = (126, 196, 204)       # the branch
 GOLD = (244, 200, 96)
+EMBER = (244, 120, 72)
+ALERT = (236, 76, 84)
+NIGHT_INK = (16, 14, 34)
 MOONLIT = (242, 238, 218)
-THEME = {MUTED: LAV, TEXT: CREAM, TRACK: GLASS, BASE: GLASS, INK: NIGHT_INK}  # the shared pieces, recoloured for night
-ROUND = HALF if BASIC else ("", "")  # rounded bar ends
+NRAMP = [(0, (92, 156, 232)), (50, (160, 144, 240)), (75, GOLD), (90, EMBER), (100, ALERT)]  # cool while there is room, firelight as it runs out
 SKY = ((0, (8, 9, 26), (34, 26, 72)), (4.5, (8, 9, 26), (34, 26, 72)), (5.5, (12, 14, 40), (76, 50, 106)),
        (6.5, (22, 26, 64), (156, 90, 102)), (7.5, (26, 38, 82), (186, 122, 100)), (9, (16, 26, 58), (52, 68, 116)),
        (16.5, (16, 26, 58), (52, 68, 116)), (17.5, (18, 20, 54), (124, 74, 108)), (18.5, (16, 16, 48), (178, 90, 88)),
@@ -537,13 +541,120 @@ FLAME = ((255, 248, 210), (255, 204, 92), (255, 144, 48), (228, 76, 38))  # core
 LOG, BARK, RING = (126, 78, 48), (78, 46, 32), (214, 160, 104)
 PUMPKIN = (226, 116, 30)
 MALLOW = ((252, 248, 238), (246, 212, 150), (204, 136, 70), (76, 52, 44))  # raw, golden, toasted, on fire
-PINES = {6: ("..#..", ".###.", "..#..", ".###.", "#####", "..#.."),
-         8: ("...#...", "..###..", "...#...", "..###..", ".#####.", "..###..", "#######", "...#...")}
-CAMP = {"idle": pose("right"), "blink": pose("shut-right"), "look": pose("left"), "wave": pose("right", "one-up"),
-        "roast": pose("right", "one-up"), "tap": pose("right", feet="left"), "cheer": pose("right", "up"),
-        "alarm": pose(arms="up")}
+FIRE, AHEAD, FOREST = (6, 7, 12, 13), (4, 5, 10, 11), (2, 3, 8, 9)
+CAMPER = {  # Clawd's poses: the columns of its eyes, its left and right arm, its legs. Four eye columns
+    "idle": (AHEAD, "down", "down", (3, 5, 10, 12)),  # are two eyes a cell across and half a cell tall,
+    "blink": ((), "down", "down", (3, 5, 10, 12)),   # under a row of body, as on Clawd itself; two are
+    "look": (FOREST, "down", "down", (3, 5, 10, 12)),  # wide-open eyes, a pixel across and a cell tall
+    "wave": (AHEAD, "down", "up", (3, 5, 10, 12)),
+    "roast": (FIRE, "down", "down", (3, 5, 10, 12)),
+    "tap": (AHEAD, "down", "down", (2, 5, 10, 12)),
+    "cheer": (AHEAD, "up", "up", (3, 5, 10, 12)),
+    "alarm": ((4, 11), "up", "up", (3, 5, 10, 12)),
+    "sleep": ((), "down", "down", (3, 5, 10, 12)),
+}
 CAMP_ACTS = (("blink",), ("look", "look", "idle", "look"), ("roast",) * 4, ("tap", "idle", "tap", "idle"),
              ("blink", "idle", "blink"), ("cheer", "cheer"))
+FONT_SAFE = "▀▌━╸┃·∙‹›…▲♪♦"  # every non-ASCII glyph the campfire prints; Consolas has them all
+
+
+def tube(p, width, w=None):
+    """A thin bar, drawn the way rich draws one: ━ for the part used, ╸ for a half cell, then ━ in the
+    night's own colour. The colour comes from the position, cool to warm, so a fuller bar reaches into
+    the firelight. Thin bars leave air between the rows. On a window's bar ┃ marks how far through
+    the window you are."""
+    units = round(clamp(p) / 100 * width * 2)
+    now = None if w is None or w.elapsed is None else min(width - 1, int(w.elapsed * width))
+    out = ""
+    for i in range(width):
+        fill = units - 2 * i
+        if i == now:
+            out += fg(LAV) + "┃"
+        elif fill >= 1:
+            out += fg(ramp((i + 0.5) * 100 / width, NRAMP)) + "━╸"[fill == 1]
+        else:
+            out += fg(GLASS) + "━"
+    return out + RST
+
+
+def toast(s):
+    """A note for 12 seconds after an event the scene also shows: a compaction, or a 5-hour reset."""
+    for key, drop, note in (("ctx", 15, "♦ compacted · the sky clears"), ("5h", 30, "♦ fresh 5 hours · woodpile restocked")):
+        seq = s.hist.get(key, [])
+        if len(seq) >= 2 and seq[-2][1] - seq[-1][1] >= drop and s.clock - seq[-1][0] <= 12 * s.scale:
+            return note
+
+
+def camp_head(s, room):
+    """Who and where: the model, the effort, the folder and branch, then the session's name, or a note,
+    if at least 8 cells of it fit in room."""
+    out = paint(CLAY, s.model)
+    if s.effort:
+        out += paint(DIM, " · ") + paint(VIOLET, str(s.effort).lower())
+    if s.fast:
+        out += paint(DIM, " · ") + paint(GOLD, "fast")
+    if s.vim:
+        out += paint(DIM, " · ") + paint(LAV, str(s.vim).lower())
+    out += "   " + paint(CREAM, cut(s.dir, 24))
+    if s.branch:
+        out += paint(DIM, " ‹") + paint(TEAL, cut(s.branch, 24)) + paint(DIM, "›")
+    if s.pr:
+        n, state = s.pr
+        out += "  " + paint({"approved": TEAL, "changes_requested": ALERT, "draft": DIM}.get(state, GOLD), f"#{n}")
+    note, left = toast(s), room - vlen(out) - 3
+    if left < 8:
+        return out
+    if note:
+        return out + "   " + paint(GOLD, cut(note, left))
+    return out + ("   " + ITALIC + paint(DIM, cut(s.name, left)) if s.name else "")
+
+
+def camp_note(w, tick):
+    """A window's note: when it resets, or a warning when it runs out first."""
+    if w.used >= 100:
+        return BOLD + paint(ALERT, "▲ limit hit") + (paint(DIM, f" · {dur(w.left)}") if w.left is not None else "")
+    if w.eta is not None:  # dry before the reset; only shout when it is well before
+        hot = w.eta < 0.5 * w.left
+        return (BOLD if hot and tick % 2 else "") + paint(ALERT if hot else EMBER, f"▲ dry in {dur(w.eta)}")
+    return paint(DIM, "resets ") + paint(LAV, dur(w.left)) if w.left is not None else ""
+
+
+def camp_data(s, tick, bar):
+    """The head row, then the context and each window: a label, a bar, the percentage and one note.
+    The context's note is the cache, the fire's other half."""
+    def row(label, p, w, note):
+        if p is None:
+            return paint(LAV, f"{label:<4}") + paint(DIM, "--")
+        return paint(LAV, f"{label:<4}") + tube(p, bar, w) + pct(p, tick, stops=NRAMP) + "  " + note
+
+    cache = paint(DIM, f"{tok(s.used)} of {tok(s.size)}")
+    if s.cache:
+        left = s.cache.expires - s.wall if s.cache.expires else None
+        if s.cache.warm and (left is None or left > 0):
+            cache = paint((240, 170, 104), "cache warm" + (f" {dur(left)}" if left else ""))
+        else:
+            cache = paint((126, 146, 196), "cache cold")
+    rows = [camp_head(s, bar + 30), row("ctx", s.ctx, None, cache)]
+    for name, _, _ in WINDOWS:
+        w = s.win.get(name)
+        rows.append(row(name, w.used if w else None, w, camp_note(w, tick) if w else ""))
+    return rows
+
+
+def v_camp(s, tick):
+    """The numbers on the left, the scene in a window pinned to the right edge, 4 rows tall.
+    A narrower terminal gets a smaller camp, then the numbers alone."""
+    W, t = s.cols, s.t
+    lo, least, most = ((20, 64, 100), (14, 40, 63), (8, 0, 0))[t]  # the shortest bar, the smallest and largest scene
+    scene = max(0, min(most, W - 32 - lo))
+    if t < 2 and scene < least:
+        return ["~" * (W + 1)]  # too wide on purpose: render tries the next, tighter layout
+    # 30 = the label, the percentage and the widest note; 2 = the gap before the scene
+    bar = int(clamp(W - 30 - (scene + 2 if scene else 0), lo, 36))
+    rows = [fit(r, bar + 30) for r in camp_data(s, tick, bar)]
+    if not scene:
+        return rows
+    return [r + " " * (W - scene - vlen(r)) + c for r, c in zip(rows, camp_scene(s, tick, scene, t == 1))]
 
 
 def avg(cs):
@@ -555,27 +666,22 @@ def dist(a, b):
 
 
 def block(p):
-    """The glyph and the two colours that come closest to a cell's six pixels (left to right, top
-    to bottom): a sextant, or with CLAWD_BASIC a half block. Returns (glyph, fg, bg)."""
-    if BASIC:
-        top, bot = avg(p[:2] * 2 + p[2:4]), avg(p[4:] * 2 + p[2:4])
-        return (" ", None, top) if dist(top, bot) < 60 else ("▀", top, bot)
-    a = p[0]
-    b = max(p, key=lambda c: dist(a, c))
-    for _ in range(2):  # 2-means: give each pixel to the nearer colour, then move each colour to its pixels' mean
-        m = sum(1 << i for i, c in enumerate(p) if dist(c, b) < dist(c, a))
-        if dist(a, b) < 60 or m in (0, 63):
-            return " ", None, avg(p)
-        a, b = avg([c for i, c in enumerate(p) if not m >> i & 1]), avg([c for i, c in enumerate(p) if m >> i & 1])
-    return {21: "▌", 42: "▐"}.get(m) or chr(0x1FB00 + m - 1 - (m > 21) - (m > 42)), b, a
+    """The glyph and the two colours closest to a cell's four pixels (top left, top right, bottom left,
+    bottom right): one colour, top over bottom (▀), or left beside right (▌). Returns (glyph, fg, bg)."""
+    tl, tr, bl, br = p
+    top, bot, left, right = avg((tl, tr)), avg((bl, br)), avg((tl, bl)), avg((tr, br))
+    across = dist(tl, top) + dist(tr, top) + dist(bl, bot) + dist(br, bot)
+    down = dist(tl, left) + dist(bl, left) + dist(tr, right) + dist(br, right)
+    glyph, a, b = ("▀", top, bot) if across <= down else ("▌", left, right)
+    return (" ", None, avg(p)) if dist(a, b) < 60 else (glyph, a, b)
 
 
 class Canvas:
-    """A scene of pixels, 2 across and 3 down per cell, with text cells laid on top.
-    A text cell without a background takes the colour of the pixels under it."""
+    """A scene of pixels, 2 across and 2 down per cell, with glyph cells laid on top.
+    A glyph cell takes the colour of the pixels under it as its background."""
 
     def __init__(self, cols, rows, fill):
-        self.w, self.h, self.cells = cols * 2, rows * 3, {}
+        self.w, self.h, self.cells = cols * 2, rows * 2, {}
         self.sky = [[fill(x, y) for x in range(self.w)] for y in range(self.h)]
         self.px = [row[:] for row in self.sky]
 
@@ -585,42 +691,28 @@ class Canvas:
             self.px[y][x] = c if a >= 1 else mix(self.px[y][x], c, a)
 
     def under(self, r, c):
-        return [self.px[3 * r + i // 2][2 * c + i % 2] for i in range(6)]
+        return [self.px[2 * r + i // 2][2 * c + i % 2] for i in range(4)]
 
     def free(self, r, c):
-        """True when cell (r, c) is untouched sky with no text beside it: room for a star."""
+        """True when cell (r, c) is untouched sky with no glyph beside it: room for a star."""
         return all((r, x) not in self.cells for x in range(c - 2, c + 3)) and \
-            self.under(r, c) == [self.sky[3 * r + i // 2][2 * c + i % 2] for i in range(6)]
+            self.under(r, c) == [self.sky[2 * r + i // 2][2 * c + i % 2] for i in range(4)]
 
-    def text(self, row, x, s, theme=None):
-        """Lay an ANSI string on the canvas from column x. Spaces without a background stay see-through."""
-        f = b = None
-        attr = ""
-        for part in ANSI.split(s):
-            if part.startswith("\x1b"):
-                f, b, attr = sgr(part, f, b, attr)
-                continue
-            for ch in part:
-                if 0 <= x < self.w // 2 and (ch != " " or b is not None):
-                    self.cells[row, x] = (ch, theme.get(f, f) if theme else f, theme.get(b, b) if theme else b, attr)
-                x += 1
-        return x
+    def glyph(self, r, c, ch, color, attr=""):
+        if 0 <= r < self.h // 2 and 0 <= c < self.w // 2:
+            self.cells[r, c] = (ch, color, attr)
 
     def render(self):
         lines = []
-        for r in range(self.h // 3):
+        for r in range(self.h // 2):
             out, cf, cb, ca = [], None, None, ""
             for c in range(self.w // 2):
-                cell = self.cells.get((r, c))
-                if cell:
-                    ch, f, b, a = cell
-                    f, b = f or CREAM, b or avg(self.under(r, c))
+                if (r, c) in self.cells:
+                    (ch, f, a), b = self.cells[r, c], avg(self.under(r, c))
                 else:
                     (ch, f, b), a = block(self.under(r, c)), ""
-                if ch == " " and not c:  # never a space first: Claude Code strips them
-                    ch, f = "▌", b
                 if a != ca:
-                    out.append(RST + "".join(f"{ESC}{n}m" for n in a))
+                    out.append(RST + (BOLD if a else ""))
                     cf = cb = None
                     ca = a
                 if f != cf and ch != " ":
@@ -647,19 +739,19 @@ def stars(cv, s, tick, day):
     More switch on as the context fills; a compaction clears the sky. Each frame a few twinkle."""
     dens = 0.07 + 0.3 * (s.ctx or 0) / 100
     for x in range(cv.w // 2):
-        r = int(rnd(x, 2) * 3)
+        r = int(rnd(x, 2) * 2)
         if rnd(x, 1) >= dens or not cv.free(r, x):
             continue
         mag, tw = rnd(x, 3), rnd(x, tick, 4)
         glyph = "+" if mag > 0.86 and tw < 0.5 else "∙" if mag > 0.55 else "·"
         lum = (0.45 + 0.55 * mag) * (0.5 if day else 1) * (0.4 if tw < 0.12 else 1)
-        cv.cells[r, x] = (glyph, mix(avg(cv.under(r, x)), STAR[int(rnd(x, 5) * 3)], lum), None, "")
+        cv.glyph(r, x, glyph, mix(avg(cv.under(r, x)), STAR[int(rnd(x, 5) * 3)], lum))
 
 
 def moon(cv, cx, cy, ry, lit, color):
     """The moon, lit fraction lit (1 full, 0 new) and waning from the right, in a soft halo.
-    A pixel is 2/3 as wide as it is tall, so the disc is 1.4 times as many pixels across as down."""
-    rx = ry * 1.4
+    A pixel is about half as wide as it is tall, so the disc is 2.1 times as many pixels across as down."""
+    rx = ry * 2.1
     dark = mix((84, 92, 150), cv.px[0][min(cv.w - 1, int(cx))], 0.45)  # the unlit part: dim, but the disc stays whole
     edge = 2 * lit - 1  # the terminator, from -1 (new) to 1 (full), in half-widths of each row
     for y in range(cv.h):
@@ -675,10 +767,7 @@ def moon(cv, cx, cy, ry, lit, color):
                         cover += 1
                         light += dx / math.sqrt(max(1 - dy * dy, 1e-6)) <= edge
             if cover >= 4:
-                c = mix(dark, color, light / cover)
-                if light == cover and (x - int(cx), y - int(cy)) in ((-2, -1), (1, 1)):
-                    c = mix(c, (186, 180, 160), 0.45)  # craters
-                cv.dot(x, y, c)
+                cv.dot(x, y, mix(dark, color, light / cover))
 
 
 def peaks(x, seed, every, lo, hi, slope=0.55):
@@ -690,28 +779,42 @@ def peaks(x, seed, every, lo, hi, slope=0.55):
 
 
 def ridge(cv, x0, x1, height, color, lit, rim=None, above=9):
-    """A silhouette from pixel x0 to x1, height(x) pixels tall. Where it falls to the right, the
-    slope faces the moon and takes colour lit; rim, if given, lines the top wherever it is higher
-    than pixel row above (so snow caps only the peaks)."""
+    """A silhouette from pixel x0 to x1, height(x) pixels tall, stepping a whole cell at a time so its
+    edges are ▀ steps, never slivers one pixel wide. Where it falls to the right, the slope faces the
+    moon and takes colour lit; rim, if given, lines the top wherever it is higher than pixel row
+    above (so snow caps only the peaks)."""
     for x in range(max(0, x0), min(cv.w, x1)):
-        top = cv.h - round(height(x))
-        side = lit if round(height(x + 1)) < round(height(x)) or round(height(x + 2)) < round(height(x)) - 1 else color
+        h = round(height(x - x % 2))
+        top = cv.h - h
+        side = lit if round(height(x - x % 2 + 2)) < h else color
         for y in range(max(0, top), cv.h):
-            cv.dot(x, y, rim if rim and y == top < above else side if y < top + 3 else color)
+            cv.dot(x, y, rim if rim and y == top < above else side if y < top + 2 else color)
 
 
-def sprite_px(cv, x, art, palette, base, snow=False, rim=None):
-    """Pixel art whose bottom row sits on pixel row base: each string a row, each character a palette
-    key. snow caps every top edge; rim lights every right edge, the side that faces the moon."""
+def pine(cv, cx, height, color, rim, snow):
+    """A spruce height pixels tall on a trunk at row 7, centred on cx, the middle of a cell, so its tip
+    is one cell wide. Its tiers widen downwards, and the right edge, facing the moon, catches the light."""
+    top = 7 - height
+    for y in range(top, 7):
+        k = y - top
+        hw = 1 + 0.5 * k - 0.5 * (k > 0 and k % 2 == 0)
+        for x in range(int(cx - hw) - 1, int(cx + hw) + 1):
+            d = x + 0.5 - cx
+            if abs(d) <= hw:
+                c = rim if d > hw - 1 else color
+                if snow and (k == 0 or k % 2 == 0 and abs(d) > hw - 1):
+                    c = mix(c, (230, 238, 255), 0.7)
+                cv.dot(x, y, c)
+    cv.dot(cx - 1, 7, (34, 24, 22))
+    cv.dot(cx, 7, (34, 24, 22))
+
+
+def sprite_px(cv, x, art, palette, base):
+    """Pixel art whose bottom row sits on pixel row base: each string a row, each character a palette key."""
     for dy, row in enumerate(art):
         for dx, ch in enumerate(row):
             if ch in palette:
-                c = palette[ch]
-                if rim and (dx + 1 == len(row) or row[dx + 1] not in palette):
-                    c = rim
-                if snow and (dy == 0 or art[dy - 1][dx] not in palette):
-                    c = mix(c, (230, 238, 255), 0.7)
-                cv.dot(x + dx, base - len(art) + 1 + dy, c)
+                cv.dot(x + dx, base - len(art) + 1 + dy, palette[ch])
 
 
 def fire_heat(s):
@@ -733,164 +836,66 @@ def logs_left(w):
 
 
 def campfire(cv, f, heat, tick):
-    """Crossed logs, embers that pulse, flames that dance, sparks that drift up, smoke once it burns low."""
+    """A fire centred on the cell from pixel f: logs with glowing embers, flames that dance, sparks that
+    fly up, smoke once it burns low."""
     ember = mix((96, 26, 14), (255, 128, 46), clamp(0.25 + 0.75 * heat * (0.6 + 0.4 * rnd(tick, 11)), 0, 1))
-    for dx, c in ((-3, BARK), (-2, LOG), (-1, LOG), (0, ember), (1, LOG), (2, LOG), (3, BARK)):
-        cv.dot(f + dx, 7, c)
-    for dx in (-1, 0, 1):
-        cv.dot(f + dx, 8, mix(ember, BARK, 0.5))
+    for dx, c in enumerate((BARK, LOG, LOG, ember, ember, LOG, LOG, BARK)):
+        cv.dot(f - 3 + dx, 7, c)
     sway = (-1, 0, 0, 1)[int(rnd(tick, 21) * 4)]  # the tips lean with the draught
-    for dx, base in ((-3, 1), (-2, 2.8), (-1, 4.4), (0, 5.4), (1, 4.4), (2, 2.8), (3, 1)):
+    for dx, base in ((-3, 0.6), (-2, 1.6), (-1, 2.8), (0, 3.6), (1, 3.6), (2, 2.8), (3, 1.6), (4, 0.6)):
         h = heat * base * (0.8 + 0.35 * rnd(tick, dx, 22))
         for j in range(math.ceil(h)):
             u = (j + 0.5) / h
-            c = FLAME[0] if u < 0.4 and abs(dx) < 2 else FLAME[1] if u < 0.62 and abs(dx) < 3 else FLAME[2] if u < 0.85 else FLAME[3]
-            cv.dot(f + dx + (sway if u > 0.75 else 0), 6 - j, c, min(1, h - j + 0.3))
+            c = FLAME[0] if u < 0.4 and dx in (0, 1) else FLAME[1] if u < 0.62 and -2 < dx < 3 else FLAME[2] if u < 0.85 else FLAME[3]
+            cv.dot(f + dx + (sway if u > 0.7 else 0), 6 - j, c, min(1, h - j + 0.3))
     if heat > 0.35:
         for k in range(2):  # sparks, each alive for two frames
             age, gen = (tick + k) % 2, (tick + k) // 2
-            x = f + (-3, -2, 2, 3)[int(rnd(k, gen, 23) * 4)] + age * (1 if rnd(k, gen, 24) > 0.5 else -1)
-            cv.dot(x, 2 - age - round(heat), ((255, 226, 140), (232, 120, 60))[age])
+            c = f // 2 + (-2, -1, 1, 2)[int(rnd(k, gen, 23) * 4)] + age * (1 if rnd(k, gen, 24) > 0.5 else -1)
+            cv.glyph(1 - age, c, "∙·"[age], ((255, 226, 140), (232, 120, 60))[age])
     if heat < 0.45:
-        for age in range(6):
-            cv.dot(f + (age + tick) % 3 // 2 + age // 3, 6 - age, (132, 130, 150), 0.45 * (1 - age / 6))
+        for age in range(5):
+            cv.dot(f + (age + tick) % 3 // 2 + age // 3, 5 - age, (132, 130, 150), 0.45 * (1 - age / 5))
 
 
 def glow(cv, f, heat, tick):
     """Firelight: everything near the fire takes its colour, and it flickers with the flames."""
     a0 = 0.42 * heat * (0.75 + 0.5 * rnd(tick, 11))
     for y in range(cv.h):
-        for x in range(f - 22, f + 23):
-            d = math.hypot((x - f) / 22, (y - 6) / 9)
+        for x in range(f - 20, f + 22):
+            d = math.hypot((x - f - 0.5) / 20, (y - 6) / 5)
             if d < 1:
                 cv.dot(x, y, (255, 148, 70), a0 * (1 - d) ** 2)
 
 
-def v_camp(s, tick):
-    W, t = s.cols, s.t
-    scene_w, panel_w = (62, 40, 0)[t], (44, 30, 0)[t]
-    hud = 36  # label 4 + the bar's two ends 2 + the widest text after a bar 30
-    bar = min(44, W - hud - 3 - panel_w - 2 - scene_w) if t < 2 else min(60, W - hud)
-    if bar < (18, 14)[t] if t < 2 else False:
-        return ["~" * (W + 1)]  # too wide on purpose: render tries the next, tighter layout
-    bar = max(8, bar)
+def camper(cv, x, name, body):
+    """Clawd in pixels, 16 across from x (even, so every part fills whole half cells): a body 12 by 4,
+    arms half a cell tall (a raised one a cell, up past its head), four legs on the ground and two
+    eyes. Poses move only those."""
+    eyes, arms, legs = CAMPER[name][0], CAMPER[name][1:3], CAMPER[name][3]
+    rows = (2, 3) if len(eyes) == 2 else (3,)
+    for cell in [k for k in cv.cells if x // 2 <= k[1] < x // 2 + 8]:
+        del cv.cells[cell]  # rain, snow and sparks pass behind Clawd, never over its face
+    for y in range(2, 6):
+        for dx in range(2, 14):
+            cv.dot(x + dx, y, CLAWD_BG if y in rows and dx in eyes else body)
+    for side, arm in zip((0, 14), arms):
+        up = side + (side == 0)  # a raised arm is the half of the cell beside the body
+        for px, py in (((side, 4), (side + 1, 4)) if arm == "down" else ((up, y) for y in range(4))):
+            cv.dot(x + px, py, body)
+    for dx in legs:
+        cv.dot(x + dx, 6, body)
+        cv.dot(x + dx, 7, body)
+
+
+def camp_scene(s, tick, cols, compact):
+    """The scene, cols wide and 4 rows (8 pixels) tall; things stand on pixel row 7. It is laid out
+    from the right: the moon over the lake, then the camp, then pines and mountains as far as there is room."""
+    W = 2 * cols
     loc = time.localtime(s.wall)
     hour = loc.tm_hour + loc.tm_min / 60
     top, hor = sky_at(hour)
-    cv = Canvas(W, 3, lambda x, y: mix(top, mix(top, hor, 0.35 + 0.65 * (x / W / 2) ** 1.5), (y / 8) ** 1.7))
-    px = hud + bar + 3  # the panel's column; fixed by the bar, so the panel never shifts when text changes
-    if scene_w:
-        camp(cv, s, tick, W - scene_w, px + panel_w + 2, t == 1, top, hor, loc)
-    for r, row in enumerate(camp_hud(s, tick, bar)):
-        cv.text(r, 0, row, THEME)
-    if panel_w:
-        for r, row in enumerate(camp_panel(s, tick, t)):
-            cv.text(r, px, fit(row, panel_w), THEME)
-    stars(cv, s, tick, 9 <= hour < 16.5)
-    return cv.render()
-
-
-def pill(p, width, tick, w=None, phase=0):
-    """A rounded glass tube filled with the heat gradient, a sheen travelling the fill.
-    With a window w it is also a runway: ┃ is now, the lighter glass behind it is time passed with
-    budget to spare, fill past it is budget borrowed from later (hot stripes that march), and
-    lights stream toward now through the future. The context bar gets quarter marks instead."""
-    k = 0 if p <= 0 else max(1, round(clamp(p) / 100 * width))
-    now = None if w is None or w.elapsed is None else min(width - 1, int(w.elapsed * width))
-    marks = {round(width * q / 4) for q in (1, 2, 3)}
-    sheen = (tick + phase) % (width + 12) - 6
-    out, ends = "", []
-    for i in range(width):
-        back = PAST if now is not None and i < now else GLASS
-        c = None
-        if i < k:
-            c = ramp((i + 0.5) * 100 / width)
-            if now is not None and i > now:
-                c = mix(ORANGE, RED, (i - now) / max(1, width - now - 1))
-                if (i - tick) % 3 == 0:
-                    c = mix(c, NIGHT_INK, 0.4)
-            elif abs(i - sheen) <= 1:
-                c = mix(c, WHITE, 0.45 if i == sheen else 0.18)
-        if i in (0, width - 1):
-            ends.append(c or back)
-        if i == now:
-            out += bg(c or back) + fg((NIGHT_INK if tick % 2 else mix(c, NIGHT_INK, 0.5)) if c else (WHITE if tick % 2 else LAV)) + "┃"
-        elif c and i == k - 1 and k < width:
-            out += bg(back) + fg(c) + ROUND[1]  # the fill's rounded nose
-        elif c:
-            out += bg(c) + " "
-        elif now is not None and i > now and (i + tick) % 3 == 0:
-            out += bg(back) + fg(mix(GLASS, LAV, 0.5)) + "·"
-        elif now is None and i in marks:
-            out += bg(back) + fg(mix(GLASS, LAV, 0.4)) + "·"
-        else:
-            out += bg(back) + " "
-    if c and k < width:
-        ends[-1] = GLASS
-    return NOBG + fg(ends[0]) + ROUND[0] + out + RST + fg(ends[-1]) + ROUND[1] + RST
-
-
-def camp_hud(s, tick, width):
-    """The three bars in one column, like the dashboard's, as rounded glass on the sky."""
-    rows = [paint(LAV, "ctx --") if s.ctx is None else
-            paint(LAV, "ctx ") + pill(s.ctx, width, tick) + pct(s.ctx, tick) + paint(LAV, f" {tok(s.used)}/{tok(s.size)}")]
-    for i, (name, _, _) in enumerate(WINDOWS):
-        w = s.win.get(name)
-        if not w:
-            rows.append(paint(LAV, f"{name}  --"))
-            continue
-        row = paint(LAV, f"{name}  ") + pill(w.used, width, tick, w, phase=7 * (i + 1)) + pct(w.used, tick)
-        if w.elapsed is not None:
-            row += verdict(w, tick, short=True)
-        rows.append(row + (paint(LAV, f" · {dur(w.left)}") if w.left is not None else ""))
-    return rows
-
-
-def toast(s):
-    """A note for 12 seconds after an event the scene also shows: a compaction, or a 5-hour reset."""
-    for key, drop, note in (("ctx", 15, "♦ compacted · the sky clears"), ("5h", 30, "♦ fresh 5 hours · woodpile restocked")):
-        seq = s.hist.get(key, [])
-        if len(seq) >= 2 and seq[-2][1] - seq[-1][1] >= drop and s.clock - seq[-1][0] <= 12 * s.scale:
-            return note
-
-
-def camp_panel(s, tick, t):
-    """Who (model and effort chips, with rounded ends), where (folder, branch, PR, lines changed),
-    and how it is going (session time, cost, the cache's time left). t=1 keeps the short version."""
-    r0 = who(s, tick, ROUND)
-    if s.fast:
-        r0 += paint(YELLOW, "  fast")
-    if s.vim:
-        r0 += paint(LAV, f"  {str(s.vim).lower()}")
-    if s.name and t == 0:
-        r0 += "  " + ITALIC + paint(CREAM, s.name)
-    r1 = where(s)
-    if s.pr:
-        n, state = s.pr
-        r1 += "  " + paint({"approved": GREEN, "changes_requested": RED, "draft": LAV}.get(state, YELLOW), f"#{n}")
-    if s.added or s.removed:
-        r1 += "  " + paint(GREEN, f"+{s.added:.0f}") + paint(RED, f" -{s.removed:.0f}")
-    parts = []
-    if s.session:
-        parts.append(paint(CREAM, dur(s.session)) + (paint(LAV, " session") if t == 0 else ""))
-    if s.usd is not None:
-        parts.append(paint(GOLD, f"${s.usd:.2f}"))
-    if s.cache:
-        left = s.cache.expires - s.wall if s.cache.expires else None
-        if s.cache.warm and (left is None or left > 0):
-            parts.append(paint(ORANGE, "cache warm" + (f" {dur(left)}" if left else "")))
-        else:
-            parts.append(paint((126, 146, 196), "cache cold"))
-    note = toast(s)
-    return [r0, r1, paint(GOLD, note) if note else paint(LAV, " · ").join(parts)]
-
-
-def camp(cv, s, tick, sx, mx0, compact, top, hor, loc):
-    """The scene: mountains from column mx0 to the right edge, the camp itself from column sx.
-    Coordinates are pixels. Rows 0-5 are the sky; rows 6-8, the last line of cells, are the ground,
-    seen a little from above, so things stand on row 7 and their feet overlap it."""
-    W = cv.w
-    X = lambda col: 2 * col  # a column's left pixel
+    cv = Canvas(cols, 4, lambda x, y: mix(top, mix(top, hor, 0.3 + 0.7 * (x / W) ** 1.5), (y / 7) ** 1.6))
     md = (loc.tm_mon, loc.tm_mday)
     halloween, winter = (10, 24) <= md <= (11, 1), (12, 1) <= md <= (12, 26)
     newyear = (md == (12, 31) and loc.tm_hour >= 21) or (md == (1, 1) and loc.tm_hour < 2)
@@ -900,161 +905,153 @@ def camp(cv, s, tick, sx, mx0, compact, top, hor, loc):
     storm = sev == 2 and not asleep
     heat = 0.0 if asleep else fire_heat(s) * ((0.45 + 0.4 * rnd(tick, 12)) if storm else 1)  # rain on the fire
     flick = rnd(tick, 11)
+    # pixel columns; each thing starts on a cell's left pixel, or centres on a cell's middle (tent, pines)
     if compact:
-        tent, fxc, cl, f, wood, pump, bush, pine, lake = None, sx + 1, sx + 2, X(sx + 13) + 1, X(sx + 17), X(sx + 22), None, X(sx + 25) + 1, X(sx + 28)
+        lake, shore, wood, f, bush, pump, tent = W - 20, W - 23, W - 32, W - 42, None, None, None
     else:
-        tent, fxc, cl, f, wood, pump, bush, pine, lake = X(sx + 5), sx + 13, sx + 14, X(sx + 25) + 1, X(sx + 29), X(sx + 35), X(sx + 40), X(sx + 46) + 1, X(sx + 49)
-    x0, mx = X(mx0), (lake + W) / 2  # the land fades in from x0; the moon hangs over the lake
+        lake, shore, wood, f, bush, pump, tent = W - 30, W - 35, W - 66, W - 76, W - 50, W - 58, W - 111
+    cl = f - 22  # Clawd's left edge, close enough to the fire to roast a marshmallow
+    mx = (lake + W) / 2  # the moon hangs over the lake
     seven = s.win.get("7d")
     lit = 1 if seven is None else 1 - seven.used / 100
     moonc = (255, 214, 156) if halloween else MOONLIT  # a harvest moon at Halloween
 
-    far = mix(mix(top, hor, 0.7), (52, 58, 112), 0.35)
+    far = mix(mix(top, hor, 0.7), (52, 58, 112), 0.55)
     near = mix(top, (14, 18, 30), 0.6)
     grass = mix(near, (52, 92, 78), 0.45) if not winter else mix(near, (200, 212, 236), 0.6)
-    tree = (6, 16, 22)
+    tree = (16, 36, 44)  # dark teal: darker than the mountains, lighter than the night above them
     water = mix(mix(top, hor, 0.4), (6, 10, 30), 0.35)
 
-    moon(cv, mx, 2.6, 2.5, lit, moonc)
+    moon(cv, mx, 2, 2, lit, moonc)
     if sev or storm:  # weather: clouds drift in when something needs watching, a storm when it is critical
-        span = W - x0
         for k in range(4 if storm else 2):
-            cx = x0 + (rnd(k, 61) * span + 2 * tick) % span
-            rx, cy = 9 + 9 * rnd(k, 62), 0.8 + 2 * rnd(k, 63)
+            cx = (rnd(k, 61) * W + 2 * tick) % W
+            rx, cy = 8 + 8 * rnd(k, 62), 0.6 + 1.6 * rnd(k, 63)
             for x in range(int(cx - rx - 1), int(cx + rx + 2)):
-                for y in range(6):
-                    d = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / 1.9) ** 2
+                for y in range(4):
+                    d = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / 1.3) ** 2
                     c = (34, 34, 56) if storm else mix((70, 70, 110), MOONLIT, 0.14 if y < cy else 0)
                     cv.dot(x, y, c, clamp((1 - d) * 1.8, 0, 1) * (0.9 if storm else 0.66))
     if not asleep and tick % 37 == 5:  # a shooting star now and then, and Clawd waves at it
-        sx0 = x0 + 8 + int(rnd(tick // 37, 71) * max(1, W - x0 - 30))
+        sx0 = 10 + int(rnd(tick // 37, 71) * max(1, W - 30))
         for i in range(10):
-            cv.dot(sx0 - i, i // 2, (255, 255, 236), 1 - i / 10)
+            cv.dot(sx0 - i, i // 4, (255, 255, 236), 1 - i / 10)
 
-    def fade(x, n=24):
-        return clamp((x - x0) / n, 0, 1) ** 0.7
-
-    valley = lambda x: 1 - math.exp(-((x - mx) / 10) ** 2)  # the mountains part where the moon rises over the lake
-    ridge(cv, x0, W, lambda x: 3 + max(0, peaks(x, 101, 15, 2.5, 6)) * valley(x) * fade(x),
-          far, mix(far, MOONLIT, 0.16), mix(far, (230, 238, 255), 0.7) if winter else None, 3)
-    camp0, camp1 = X(sx + 2), (bush + 7 if bush is not None else pump + 6)
+    valley = lambda x: 1 - math.exp(-((x - mx) / 9) ** 2)  # the mountains part where the moon rises over the lake
+    ridge(cv, 0, W, lambda x: 2 + max(0, peaks(x, 101, 14, 1.0, 3.8)) * valley(x),
+          far, mix(far, MOONLIT, 0.08), mix(far, (230, 238, 255), 0.7) if winter else None, 4)
+    camp0, camp1 = (tent - 10 if tent else cl - 4), (bush + 12 if bush else wood + 8)
 
     def hills(x):
-        h = 1.6 + 2.6 * noise(x / 15, 103)
         d = max(camp0 - x, x - camp1, 0) * clamp((lake - x) / 6, 0, 1)  # flat at the camp, down to the shore
-        return (3 + h * clamp(d / 10, 0, 1)) * fade(x, 10)
+        return 2 + 1.8 * noise(x / 12, 103) * clamp(d / 8, 0, 1)
 
-    ridge(cv, x0, lake, hills, near, near, grass)
-    for x in range(max(x0, X(sx)), lake):  # tufts of grass
-        if rnd(x, 37) < 0.1 and round(hills(x)) == 3 and not camp0 + 4 < x < camp1:
-            cv.dot(x, 5, grass)
+    ridge(cv, 0, lake, hills, near, near, grass)
     for x in range(lake, W):  # the lake: the horizon's glow on the far water, the moon in strokes that shimmer
-        for y in (6, 7, 8):
-            c = mix(water, mix(hor, (120, 120, 190), 0.3), (0.75, 0.3, 0.08)[y - 6])
-            if abs(x + 0.5 - mx) < (2.5, 3.5, 4.5)[y - 6] and (x + tick * (1, -1, 1)[y - 6] + 2 * y) % 5 < 3:
-                c = mix(c, moonc, (0.2 + 0.6 * lit) * (0.9, 0.7, 0.5)[y - 6])
-            elif rnd(x, y, tick // 2, 32) < 0.05:
+        k = x // 2  # a stroke is a whole cell wide, so the water reads as ▀ dashes, not a barcode
+        for y in (6, 7):
+            c = mix(water, mix(hor, (120, 120, 190), 0.3), (0.6, 0.15)[y - 6])
+            near = 1 - abs(2 * k + 1 - mx) / (5, 8)[y - 6]
+            if near > 0 and rnd(k, y, tick, 31) < 0.7:
+                c = mix(c, moonc, (0.25 + 0.6 * lit) * (0.9, 0.6)[y - 6] * min(1, 0.3 + near))
+            elif rnd(k, y, tick // 2, 32) < 0.06:
                 c = mix(c, (150, 160, 214), 0.3)  # a ripple catches the light
             cv.dot(x, y, c)
-    for x, size in (((X(sx + 2), 6), (pine, 8)) if not compact else ((pine, 8),)):
-        sprite_px(cv, x - len(PINES[size][0]) // 2, PINES[size], {"#": tree}, 7, winter, mix(tree, far, 0.9))
+    rim = mix(tree, (120, 150, 170), 0.18)  # moonlight on the needles
+    for k, x in enumerate(range(5, (tent - 12 if tent else cl - 6), 9)):  # a forest up to the camp
+        if rnd(k, 85) < 0.6:
+            pine(cv, (x + int(rnd(k, 86) * 3)) | 1, 4 + int(rnd(k, 87) * 3), tree, rim, winter)
+    pine(cv, shore, 6, tree, rim, winter)
     if tent is not None:  # a tent, its door open unless Clawd is asleep in it, and a flag that flutters
-        for dy in range(6):
-            for dx in range(-dy, dy + 1):
-                door = dy >= 3 and abs(dx) <= (dy - 3) // 2
-                cv.dot(tent + 5 + dx, 2 + dy, ((70, 128, 120) if asleep else (30, 18, 24)) if door else
-                       (46, 96, 104) if dx < 0 else (86, 152, 138))
-        cv.dot(tent + 5, 1, (110, 96, 84))
-        cv.dot(tent + 5, 0, (110, 96, 84))
-        cv.dot(tent + 6, 0, CLAY)
-        cv.dot(tent + 7, tick % 2, CLAY)
-    for k, (x, y) in enumerate(((1, 7), (4, 7), (7, 7), (3, 6), (6, 6))):  # the woodpile; the top logs go first
-        if k < logs_left(s.win.get("5h")):
-            for dx, c in ((-1, BARK), (0, RING), (1, mix(RING, BARK, 0.35)), (2, BARK)):
-                cv.dot(wood + x + dx, y, c)
+        for y in range(1, 8):
+            hw = 1 + (y - 1) * 1.15
+            for x in range(int(tent - hw) - 1, int(tent + hw) + 1):
+                d = x + 0.5 - tent
+                if abs(d) <= hw:
+                    door = y >= 4 and abs(d) <= (y - 4) * 0.6 + 0.5
+                    cv.dot(x, y, ((70, 128, 120) if asleep else (30, 18, 24)) if door else
+                           (46, 96, 104) if d < 0 else (86, 152, 138))
+        cv.dot(tent - 1, 0, (110, 96, 84))
+        cv.dot(tent, 0, (110, 96, 84))
+        for x, y in ((tent + 1, 0), (tent + 2, 0)) if tick % 2 else ((tent + 1, 0), (tent + 1, 1)):
+            cv.dot(x, y, CLAY)
+    for k, (dx, y) in enumerate(((0, 6), (2, 6), (4, 6), (2, 4), (4, 4))[:logs_left(s.win.get("5h"))]):
+        for i in (0, 1):  # the woodpile, log ends over bark; the top logs go first
+            cv.dot(wood + dx + i, y, mix(RING, BARK, 0.3 * (k % 2)))
+            cv.dot(wood + dx + i, y + 1, BARK)
     glow(cv, f, heat, tick)
     campfire(cv, f, heat, tick)
-    if halloween:  # a jack-o'-lantern with a candle inside
+    if halloween and pump is not None:  # a jack-o'-lantern with a candle inside
         face = mix((255, 226, 120), (232, 130, 40), 0.5 * flick)
-        sprite_px(cv, pump, ("..g.", "PPPP", "fPPf", "PffP"), {"g": (96, 128, 60), "P": PUMPKIN, "f": face}, 8)
+        sprite_px(cv, pump, ("..gg..", "PPPPPP", "ffPPff", "PPffPP"), {"g": (96, 128, 60), "P": PUMPKIN, "f": face}, 7)
     if bush is not None:  # something in the bush, watching the fire. It blinks.
-        sprite_px(cv, bush, ("..##..", ".####.", "######"), {"#": tree}, 7, winter, mix(tree, far, 0.9))
-        if rnd(tick, 33) > 0.15:
-            eye = (255, 96, 40) if halloween else (255, 206, 84)
-            cv.dot(bush + 1, 6, eye)
-            cv.dot(bush + 3, 6, eye)
+        eye = ((255, 96, 40) if halloween else (255, 206, 84)) if rnd(tick, 33) > 0.15 else tree
+        sprite_px(cv, bush, ("..ssssss..", "##ee##ee##", "##########"),
+                  {"s": mix(tree, (230, 238, 255), 0.6) if winter else tree, "#": tree, "e": eye}, 7)
 
     if halloween:  # bats cross the moon
         for k in range(2):
-            bx, by, up = mx + (tick * 3 + k * 17) % 34 - 17, 1 + 2 * k, (tick + k) % 2
-            for dx, dy in ((0, 0), (-1, -up), (1, -up)):
-                cv.dot(bx + dx, by + dy, (24, 14, 30))
+            cv.glyph(k, int(mx // 2) + (tick * 2 + k * 9) % 18 - 9, "v", (30, 18, 36))
     if winter:  # snow
-        for k in range(30):
-            cv.dot(x0 + int(rnd(k, 41) * (W - x0)) + (tick // 2 + k) % 2, (tick + int(rnd(k, 42) * 9)) % 9, (232, 238, 255), 0.85)
+        for k in range(cols // 5):
+            cv.glyph((tick + int(rnd(k, 42) * 4)) % 4, int(rnd(k, 41) * cols) + (tick // 2 + k) % 2, "∙·"[k % 3 == 0], (232, 238, 255))
     if fireflies:
-        for k in range(8):
+        for k in range(5):
             if rnd(k, tick, 83) < 0.5:
-                cv.dot(X(sx) + int(rnd(k, 81) * (W - X(sx))), 4 + int(rnd(k, tick // 3, 82) * 3), (206, 255, 120))
-    if newyear:  # fireworks
+                cv.glyph(1 + int(rnd(k, tick // 3, 82) * 3), int(rnd(k, 81) * cols), "·", (206, 255, 120))
+    if newyear:  # fireworks: a rocket, a burst, sparks that spread and fade
         for k in range(2):
             age, gen = (tick + k * 2) % 4, (tick + k * 2) // 4
-            cx, cy = x0 + rnd(k, gen, 91) * (W - x0), 1.5 + rnd(k, gen, 92) * 1.5
-            hue = ((255, 92, 120), (120, 220, 255), (255, 220, 90), (180, 130, 255))[gen % 4]
-            for a in range(8 if age else 1):
-                ang = a * math.pi / 4
-                cv.dot(cx + math.cos(ang) * age * 2, cy + math.sin(ang) * age * 1.3, hue, 1 - age / 4)
-    if storm:
-        for x in range(x0, W):
-            if rnd(x, tick, 51) < 0.2:
-                y = int(rnd(x, tick, 52) * 8)
-                cv.dot(x, y, (132, 152, 212), 0.55)
-                cv.dot(x - 1, y + 1, (132, 152, 212), 0.3)
-        if tick % 7 == 3:  # lightning: the sky flashes and a bolt forks down
+            c0, hue = int(rnd(k, gen, 91) * cols), ((255, 92, 120), (120, 220, 255), (255, 220, 90), (180, 130, 255))[gen % 4]
+            for r, dc, ch in (((1, 0, "·"),), ((0, 0, "*"),), ((0, -2, "∙"), (0, 2, "∙"), (1, -1, "·"), (1, 1, "·")),
+                              ((1, -3, "·"), (1, 3, "·")))[age]:
+                cv.glyph(r, c0 + dc, ch, mix(hue, top, 0.4 if age == 3 else 0))
+    if storm:  # rain, and now and then lightning: the sky flashes and a bolt forks down
+        for c in range(cols):
+            if rnd(c, tick, 51) < 0.14:
+                cv.glyph(int(rnd(c, tick, 52) * 4), c, "/", (132, 152, 212))
+        if tick % 7 == 3:
             for row in cv.px:
-                row[x0:] = [mix(c, (206, 212, 255), 0.2) for c in row[x0:]]
-            bx = x0 + int(rnd(tick, 54) * (W - x0))
-            for y in range(7):
-                bx += (-1, 0, 1)[int(rnd(tick, y, 55) * 3)]
-                cv.dot(bx, y, (246, 246, 255))
+                row[:] = [mix(c, (206, 212, 255), 0.2) for c in row]
+            bc = int(rnd(tick, 54) * cols)
+            for r in range(3):
+                step = (-1, 0, 1)[int(rnd(tick, r, 55) * 3)]
+                cv.glyph(r, bc, "/|\\"[step + 1], (246, 246, 255), "1")
+                bc += step
 
-    if asleep:  # Clawd is in the tent; z's float out of it
-        zx = (tent + 8) // 2 if tent is not None else fxc
-        cv.cells[1 - tick % 2, zx + tick % 2] = ("zZ"[tick % 2], LAV, None, "")
-        return
-    fx = mallow = None
-    if storm:
-        name = "alarm" if tick % 2 else "idle"
-        if tick % 2:
-            fx = (0, "!", RED, "1")
-    elif tick % 37 == 5:
-        name = "wave"
+    if asleep:  # Clawd sleeps in the tent with z's floating out, or by the cold fire on a small layout
+        if tent is None:
+            camper(cv, cl, "sleep", mix(CLAY, NIGHT_INK, 0.3))
+        zc = (tent // 2 + 2) if tent is not None else cl // 2 + 8
+        cv.glyph(1 - tick % 2, zc + tick % 2, "zZ"[tick % 2], LAV)
     else:
-        beat, act = tick % 10 - 4, CAMP_ACTS[tick // 10 % len(CAMP_ACTS)]
-        on = 0 <= beat < len(act)
-        name = act[beat] if on else "idle"
-        if name == "roast":  # a marshmallow on a stick, golden, toasted, then on fire
-            name, mallow = ("roast", MALLOW[beat]) if heat > 0.4 else ("idle", None)
-        if on and act[0] == "tap" and sev == 0:
-            fx = (1 - beat % 2, "♪", CYAN, "")
-    body = mix(CLAY, (255, 186, 116), 0.05 + 0.2 * heat * flick)  # firelight on Clawd
-    rows = CAMP[name]
-    for r in (0, 1):
-        cv.text(r, cl, sprite(r, rows[r], body))
-    for i, ch in enumerate(rows[2]):  # the legs, in pixels, so they stand on the ground
-        if ch == "▝":
-            cv.dot(X(cl + i) + 1, 6, body)
-            cv.dot(X(cl + i) + 1, 7, body)
-    if mallow:
-        for x in range(X(cl + 9), f - 2):
-            cv.dot(x, 2, (122, 88, 62))
-        cv.dot(f - 2, 1, (122, 88, 62))
-        cv.dot(f - 1, 1, mallow)
-        cv.dot(f, 1, mallow)
-        if mallow == MALLOW[-1]:
-            cv.dot(f, 0, FLAME[1])
-    if fx:
-        cv.cells[fx[0], fxc] = (fx[1], fx[2], None, fx[3])
+        fx = mallow = None
+        if storm:
+            name = "alarm" if tick % 2 else "idle"
+            if tick % 2:
+                fx = (0, cl // 2 + 4, "!", ALERT, "1")
+        elif tick % 37 == 5:
+            name = "wave"
+        else:
+            beat, act = tick % 10 - 4, CAMP_ACTS[tick // 10 % len(CAMP_ACTS)]
+            on = 0 <= beat < len(act)
+            name = act[beat] if on else "idle"
+            if name == "roast":  # a marshmallow on a stick, golden, toasted, then on fire
+                name, mallow = ("roast", MALLOW[beat]) if heat > 0.4 else ("idle", None)
+            if on and act[0] == "tap" and sev == 0:
+                fx = (1 - beat % 2, cl // 2 - 1, "♪", TEAL, "")
+        camper(cv, cl, name, mix(CLAY, (255, 186, 116), 0.05 + 0.2 * heat * flick))  # firelight on Clawd
+        if mallow:
+            for x, y in ((16, 4), (17, 4), (18, 3), (19, 3)):
+                cv.dot(cl + x, y, (122, 88, 62))
+            for x in (20, 21):
+                cv.dot(cl + x, 3, mallow)
+                if mallow == MALLOW[-1]:
+                    cv.dot(cl + x, 2, FLAME[1])
+        if fx:
+            cv.glyph(*fx)
+    stars(cv, s, tick, 9 <= hour < 16.5)
+    return cv.render()
 
 
 # ---------------------------------------------------------------- dispatch
@@ -1276,8 +1273,10 @@ def selftest():
                         assert lines and all(isinstance(l, str) and vlen(l) <= cols for l in lines), "too wide"
                         # Claude Code strips leading spaces per row, which would shift that row left
                         assert not any(ANSI.sub("", l)[:1].isspace() for l in lines), "a row starts with a space"
-                        if name == "campfire":  # the sky is full-bleed: every row exactly fills the line
-                            assert len(lines) == 3 and {vlen(l) for l in lines} == {cols}, "sky not full width"
+                        if name == "campfire":  # 4 rows; with room for the scene, it is pinned to the right edge
+                            assert len(lines) == 4 and (cols < 86 or {vlen(l) for l in lines} == {cols}), "scene off the right edge"
+                            # a glyph the terminal's font lacks shows as a ? box
+                            assert {c for l in lines for c in ANSI.sub("", l) if ord(c) > 127} <= set(FONT_SAFE), "a glyph outside FONT_SAFE"
                         if cols >= 80:  # every number we have must survive a narrow terminal
                             text = ANSI.sub("", "\n".join(lines))
                             have = [m for m, v in (("ctx", s.ctx), ("5h", s.win.get("5h")), ("7d", s.win.get("7d"))) if v is not None]
@@ -1287,7 +1286,7 @@ def selftest():
                         print(f"FAIL {name} payload#{n} cols={cols} tick={tick}: {type(e).__name__}: {e}")
     s = read_state(scenario("critical", now), now)
     oct28 = time.mktime((2026, 10, 28, 21, 0, 0, 0, 0, -1))
-    camp_at = lambda case, wall, tick=0: (lambda st: (setattr(st, "clock", tick), "".join(render("campfire", st, 200)))[1])(read_state(scenario(case, wall), wall))
+    camp_at = lambda case, wall, tick=0: (lambda st: (setattr(st, "clock", tick), "\n".join(render("campfire", st, 200)))[1])(read_state(scenario(case, wall), wall))
     checks = [(dur(4500), "1h15m"), (dur(2 * 86400 + 20 * 3600 + 59), "2d20h"), (dur(272), "4:32"), (tok(108000), "108k"),
               (tok(1_000_000), "1.0M"), (round(s.win["5h"].eta), round((100 - 83) * 0.6 * 18000 / 83)),
               (vlen(fit(paint(RED, "x" * 50), 10)), 10),
@@ -1295,7 +1294,7 @@ def selftest():
               # the gap bar keeps its width, and only the playhead fills its whole row
               ((lambda g: (vlen(g), g.count(ESC + "48;2")))(rgauge(s.win["5h"], 20, 0, gap=True)), (20, 1)),
               ({vlen(l) for l in render("dashboard", read_state(scenario("calm", now), now), 120)}, {120}),  # divider and panel line up
-              ({len(r) for p in list(POSES.values()) + list(CAMP.values()) for r in p}, {9}),  # every pose is the same size
+              ({len(r) for p in POSES.values() for r in p}, {9}),  # every pose is the same size
               # the mascot reads the room: arms up and a ! when critical, z's when a limit is hit
               (clawd(s, 1)[0], BOLD + paint(RED, "!") + sprite(0, POSES["alarm"][0], CLAY)),
               # solid cells become background and each eye a hole, so no seams show between glyphs
@@ -1310,13 +1309,15 @@ def selftest():
               # the bars are themed: none of the daytime greys survive on the night sky
               (any(fg(c) in camp_at("busy", now) or bg(c) in camp_at("busy", now) for c in (MUTED, TRACK, BASE)), False),
               # Clawd (spotted by its eyes) sits by the fire, unless a limit is hit: then z's drift out of the tent
-              ([fg(CLAWD_BG) in camp_at(c, now, 1) for c in ("calm", "asleep")], [True, False]),
+              ([any(e(CLAWD_BG) in camp_at(c, now, 1) for e in (fg, bg)) for c in ("calm", "asleep")], [True, False]),
               ("Z" in ANSI.sub("", camp_at("asleep", now, 1)), True),
               # the calendar: a jack-o'-lantern in Halloween week, none in July
               ([fg(PUMPKIN) in camp_at("calm", d) or bg(PUMPKIN) in camp_at("calm", d)
                 for d in (oct28, time.mktime((2026, 7, 2, 21, 0, 0, 0, 0, -1)))], [True, False]),
-              # the panel never shifts: the same columns whatever the numbers say
-              (len({ANSI.sub("", camp_at(c, now)).index("Opus") for c in ("calm", "busy", "critical")}), 1)]
+              # the numbers never shift: each percentage keeps its column whatever it says
+              (len({tuple(r.index("%") for r in ANSI.sub("", camp_at(c, now)).split("\n")[1:]) for c in ("calm", "busy", "critical")}), 1),
+              # a scene cell shows its four pixels as one colour, top over bottom, or left beside right
+              ([block(p)[0] for p in ((CLAY,) * 4, (CLAY, CLAY, GOLD, GOLD), (CLAY, GOLD, CLAY, GOLD))], [" ", "▀", "▌"])]
     for got, want in checks:
         if got != want:
             fails += 1

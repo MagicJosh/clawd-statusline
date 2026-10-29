@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/campfire.gif" alt="The campfire status line under a Claude Code prompt: usage bars on the left, a panel in the middle, a night scene with Clawd at a campfire on the right" width="100%">
+  <img src="docs/campfire.gif" alt="The campfire status line under a Claude Code prompt: four calm rows of usage on the left, a night scene with Clawd at a campfire on the right" width="100%">
 </p>
 
 <p align="center">
@@ -21,8 +21,9 @@
 
 ## 🔥 campfire
 
-Clawd has set up camp at the right edge of your terminal. Nothing in the scene is decoration:
-every part of it is a reading.
+Four rows. On the left, the numbers, in the colours of the night: the model, the folder, and a thin
+bar each for the context, the 5-hour and the 7-day window, each with one note (the cache, or when it resets).
+On the right, Clawd has set up camp. Nothing in the scene is decoration: every part of it is a reading.
 
 | In the scene | It shows |
 |---|---|
@@ -48,7 +49,7 @@ Keep it open for a while and you will catch them.
 - Something lives in the bush. You can see its eyes blink.
 - The moon lays a shimmering path across the lake, and its light catches the edges of the pines.
 - After a compaction or a fresh 5-hour window, a note appears for a few seconds: *the sky clears*, *woodpile restocked*.
-- Critical numbers pulse, and the runway bars show where you are in each window, with budget borrowed from later drawn as marching stripes.
+- Critical numbers pulse, and a `┃` on each window's bar shows how far through the window you are. If you would run dry before the reset, the note says when.
 
 The camp also keeps a calendar. Some of it is below; the rest you will have to find.
 
@@ -123,29 +124,25 @@ python3 statusline.py --selftest         # edge-case checks, exits 1 on failure
 
 ### Width
 
-Each style fits itself to the terminal. The campfire shows the full camp from about 170 columns,
-a smaller camp from about 130, and just the bars below that.
+Each style fits itself to the terminal. The campfire shows the full camp from about 120 columns
+(its forest grows until about 160), a smaller camp from about 90, and just the numbers below that.
 
 ## Terminal support
 
-The campfire scene is drawn with **sextant** characters (`🬀` to `🬻`, Unicode 13), which split each
-cell into a 2 × 3 grid of pixels, and the chips have rounded **powerline** ends.
+The campfire needs no special font and no terminal setting. Its pixels are the half blocks `▀` and `▌`,
+two colours per cell, and its bars are `━` lines. Plain Consolas (the Windows default) and Cascadia Code
+and Mono have every glyph it prints, and `--selftest` fails if it ever prints one outside that set.
+A few older fonts (Courier New, Lucida Console) lack `━`.
 
-- **VS Code** draws both itself, so no special font is needed. Keep `terminal.integrated.gpuAcceleration`
-  on `auto` or `on`: with it off, the font draws them instead and you may see gaps or fuzzy edges.
-- **Other terminals**: if the scene shows boxes or question marks, start the command with
-  `CLAWD_BASIC=1`. The scene then uses half blocks, and the chips get square ends.
+The dashboard's Clawd and the chips' bars use quarter and eighth blocks (`▟`, `▆`). VS Code draws those
+itself while GPU acceleration is active; otherwise they come from a fallback font and can sit slightly off.
 
-  ```json
-  "command": "CLAWD_BASIC=1 python3 -I -S /path/to/clawd-statusline/statusline.py"
-  ```
-
-The colours are tuned for a dark theme (Monokai).
+The colours are tuned for a dark theme.
 
 ## How it works
 
-- Claude Code sends the session as JSON on stdin every `refreshInterval` seconds. The script prints three lines and exits.
-- The campfire paints a 2W × 9 pixel canvas. For every cell, its six pixels are split into the two colours that fit them best, and the cell becomes the sextant that matches that split. Text is laid on top and takes the sky's colour behind it.
+- Claude Code sends the session as JSON on stdin every `refreshInterval` seconds. The script prints its rows (three, or four for the campfire) and exits.
+- The campfire scene is a canvas of pixels, 2 across and 2 down per cell. Each cell shows its four pixels as one colour, top over bottom (`▀`) or left beside right (`▌`), whichever fits them best, and the art is drawn so its edges fall on those halves. Stars, sparks, rain and snow are text glyphs laid on top, taking the sky's colour behind them.
 - Animation is a frame counter derived from the clock. Every random choice is a hash of that counter, so nothing flickers between renders.
 - A few small state files in your temp folder remember recent readings, which is how it notices a compaction or a fresh window.
 - It reads `git` metadata from the `.git` folder directly, and makes no network calls.
