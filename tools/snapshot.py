@@ -58,7 +58,7 @@ def cells(line):
     return out
 
 
-def draw_cell(d, img, x, y, ch, f, b, attr, scale=1):
+def draw_cell(d, x, y, ch, f, b, attr, scale=1):
     w, h = CW * SS * scale, CH * SS * scale
     x0, y0 = x * w, y * h
     f, b = f or INK, b or PAGE
@@ -70,21 +70,8 @@ def draw_cell(d, img, x, y, ch, f, b, attr, scale=1):
         for bit, (qx, qy) in ((1, (0, 0)), (2, (1, 0)), (4, (0, 1)), (8, (1, 1))):
             if m & bit:
                 d.rectangle([x0 + qx * w // 2, y0 + qy * h // 2, x0 + (qx + 1) * w // 2 - 1, y0 + (qy + 1) * h // 2 - 1], fill=f)
-    elif 0x1FB00 <= ord(ch) <= 0x1FB3B:  # sextants: 2 x 3 pixels, Unicode skips the two half blocks
-        m = ord(ch) - 0x1FB00 + 1
-        m += m >= 21
-        m += m >= 42
-        for i in range(6):
-            if m >> i & 1:
-                qx, qy = i % 2, i // 2
-                d.rectangle([x0 + qx * w // 2, y0 + qy * h // 3, x0 + (qx + 1) * w // 2 - 1, y0 + (qy + 1) * h // 3 - 1], fill=f)
     elif ch in LOWER:
         d.rectangle([x0, y0 + round(h * (1 - LOWER[ch])), x0 + w - 1, y0 + h - 1], fill=f)
-    elif ch in ("\ue0b4", "\ue0b6"):  # rounded powerline caps: half an ellipse that fills the cell
-        cell = Image.new("L", (w, h), 0)
-        cx = 0 if ch == "\ue0b4" else w
-        ImageDraw.Draw(cell).ellipse([cx - w, 0, cx + w - 1, h - 1], fill=255)
-        img.paste(f, (x0, y0, x0 + w, y0 + h), cell)
     elif ch in "┃│":
         t = w * (0.26 if ch == "┃" else 0.12)
         d.rectangle([x0 + (w - t) / 2, y0, x0 + (w + t) / 2, y0 + h - 1], fill=f)
@@ -105,7 +92,7 @@ def frame(rows, cols, first=0, scale=1):
     d = ImageDraw.Draw(img)
     for y, line in enumerate(rows):
         for x, (ch, f, b, a) in enumerate(cells(line)[first:first + cols]):
-            draw_cell(d, img, x + pad, y + pad, ch, f, b, a, scale)
+            draw_cell(d, x + pad, y + pad, ch, f, b, a, scale)
     return img.resize((img.width // SS, img.height // SS), Image.LANCZOS)
 
 
